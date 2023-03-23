@@ -1,5 +1,7 @@
 import { extend } from "../shared"
 
+let activeEffect
+let shouldTrack = false
 class ReactiveEffect {
     private _fn: any
     deps = []
@@ -11,8 +13,16 @@ class ReactiveEffect {
     }
 
     run() {
+        //如果被effect被stop，不需要收集依赖，只执行fn
+        if(!this.active) {
+            return this._fn()
+        }
+
+        shouldTrack = true
         activeEffect = this
-        return this._fn()
+        const result = this._fn()
+        shouldTrack = false
+        return result
     }
 
     stop() {
@@ -30,11 +40,15 @@ function cleanupEffect(effect) {
     effect.deps.forEach((dep: any) => {
         dep.delete(effect)
     });
+    effect.deps.length = 0
 }
 
 const targetMap = new Map()
 
 export function track(target, key) {
+    //如果不应该被收集依赖，直接return
+    if(!isTracking()) return
+
     let depsMap = targetMap.get(target)
     if(!depsMap) {
         depsMap = new Map()
@@ -47,13 +61,15 @@ export function track(target, key) {
         depsMap.set(key, dep)
     }
 
-    if(!activeEffect) return
-
+    //如果dep中已经存在当前的effect，直接return
+    if(dep.has(activeEffect)) return
     dep.add(activeEffect)
     activeEffect.deps.push(dep)
 }
 
-let activeEffect
+function isTracking() {
+    return shouldTrack && activeEffect !== undefined
+}
 
 export function trigger(target, key) {
     let depsMap = targetMap.get(target)
